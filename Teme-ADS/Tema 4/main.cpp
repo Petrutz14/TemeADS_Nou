@@ -1,5 +1,4 @@
 #include <iostream>
-#include <list>
 #include <algorithm>
 
 using namespace std;
@@ -13,10 +12,10 @@ struct Node {
 };
 
 class BinomialHeap {
-    // lista de radacini a arborilor binomiali
-    list<Node*> head;
+    // Folosim un array fix de radacini (maxim 32 arbori pt 2^32 elemente)
+    Node* roots[32];
 
-    // functie auxiliara pentru a uni doi arbori de acelasi grad
+    // helper sa unim doi arbori de acelasi grad
     Node* linkTrees(Node* b1, Node* b2) {
         if (b1->data > b2->data) swap(b1, b2);
         b2->parent = b1;
@@ -26,110 +25,96 @@ class BinomialHeap {
         return b1;
     }
 
-    // functia principala de merge a doua liste de radacini
-    list<Node*> mergeRootLists(list<Node*>& l1, list<Node*>& l2) {
-        list<Node*> res;
-        auto it1 = l1.begin(), it2 = l2.begin();
-        while (it1 != l1.end() && it2 != l2.end()) {
-            if ((*it1)->degree <= (*it2)->degree) {
-                res.push_back(*it1);
-                it1++;
-            } else {
-                res.push_back(*it2);
-                it2++;
-            }
-        }
-        while (it1 != l1.end()) res.push_back(*it1++);
-        while (it2 != l2.end()) res.push_back(*it2++);
-        return res;
-    }
-
 public:
-    BinomialHeap() {}
-
-    void insert(int key) {
-        BinomialHeap tempHeap;
-        tempHeap.head.push_back(new Node(key));
-        unionWith(tempHeap);
+    BinomialHeap() {
+        for (int i = 0; i < 32; i++) roots[i] = nullptr;
     }
 
     void unionWith(BinomialHeap& other) {
-        head = mergeRootLists(head, other.head);
-        other.head.clear(); // golim cealalta lista
-
-        if (head.empty()) return;
-
-        auto curr = head.begin();
-        auto next = std::next(curr);
-        auto next_next = (next != head.end()) ? std::next(next) : head.end();
-
-        while (next != head.end()) {
-            // caz 1: grade diferite SAU 3 de acelasi grad (pastram primul, combinam restul la pasul urmator)
-            if ((*curr)->degree != (*next)->degree || 
-               (next_next != head.end() && (*next_next)->degree == (*curr)->degree)) {
-                curr++;
-                next++;
-            } 
-            // caz 2: grad curr == grad next, decidem care devine parinte
-            else if ((*curr)->data <= (*next)->data) {
-                (*curr) = linkTrees(*curr, *next);
-                next = head.erase(next);
-            } else {
-                (*next) = linkTrees(*next, *curr);
-                curr = head.erase(curr);
+        Node* carry = nullptr;
+        for (int i = 0; i < 32; i++) {
+            int count = (roots[i] != nullptr) + (other.roots[i] != nullptr) + (carry != nullptr);
+            
+            if (count == 0) {
+                // nimic de facut
+            } else if (count == 1) {
+                if (other.roots[i]) roots[i] = other.roots[i];
+                else if (carry) roots[i] = carry;
+                carry = nullptr;
+            } else if (count == 2) {
+                Node* a = roots[i];
+                Node* b = other.roots[i];
+                Node* c = carry;
+                
+                Node *t1 = nullptr, *t2 = nullptr;
+                if (a && b) { t1 = a; t2 = b; roots[i] = nullptr; }
+                else if (a && c) { t1 = a; t2 = c; roots[i] = nullptr; }
+                else { t1 = b; t2 = c; }
+                
+                carry = linkTrees(t1, t2);
+            } else { // count == 3
+                Node* nextCarry = linkTrees(roots[i], other.roots[i]);
+                roots[i] = carry;
+                carry = nextCarry;
             }
-            if (next != head.end()) next_next = std::next(next);
-            else next_next = head.end();
+            other.roots[i] = nullptr;
         }
+    }
+
+    void insert(int key) {
+        BinomialHeap temp;
+        temp.roots[0] = new Node(key);
+        unionWith(temp);
     }
 
     int getMin() {
-        if (head.empty()) return -1;
-        Node* minNode = nullptr;
-        for (auto node : head) {
-            if (minNode == nullptr || node->data < minNode->data) {
-                minNode = node;
+        int minVal = -1;
+        bool found = false;
+        for (int i = 0; i < 32; i++) {
+            if (roots[i]) {
+                if (!found || roots[i]->data < minVal) {
+                    minVal = roots[i]->data;
+                    found = true;
+                }
             }
         }
-        return minNode->data;
+        return minVal;
     }
 
     void extractMin() {
-        if (head.empty()) return;
-
-        // 1. Gasim radacina minima
-        auto minIt = head.begin();
-        Node* minNode = *minIt;
-        for (auto it = head.begin(); it != head.end(); ++it) {
-            if ((*it)->data < minNode->data) {
-                minNode = *it;
-                minIt = it;
+        int minIdx = -1;
+        for (int i = 0; i < 32; i++) {
+            if (roots[i]) {
+                if (minIdx == -1 || roots[i]->data < roots[minIdx]->data) {
+                    minIdx = i;
+                }
             }
         }
 
-        // 2. Scoatem din lista de radacini
-        head.erase(minIt);
+        if (minIdx == -1) return;
 
-        // 3. Inversam lista copiilor (copiii sunt tinuti de la grad mare la mic)
+        Node* minNode = roots[minIdx];
+        roots[minIdx] = nullptr;
+
+        // Punem copiii radacinii minime intr-un heap nou
         BinomialHeap childrenHeap;
-        Node* child = minNode->child;
-        while (child) {
-            Node* nextChild = child->sibling;
-            child->sibling = nullptr;
-            child->parent = nullptr;
-            childrenHeap.head.push_front(child);
-            child = nextChild;
+        Node* curr = minNode->child;
+        while (curr) {
+            Node* next = curr->sibling;
+            curr->sibling = nullptr;
+            curr->parent = nullptr;
+            childrenHeap.roots[curr->degree] = curr;
+            curr = next;
         }
 
-        // 4. Union cu heap-ul copiilor
-        unionWith(childrenHeap);
         delete minNode;
+        unionWith(childrenHeap);
     }
 
     void printRoots() {
         cout << "Radacini: ";
-        for (auto node : head) {
-            cout << "(" << node->data << ", deg:" << node->degree << ") ";
+        for (int i = 0; i < 32; i++) {
+            if (roots[i]) cout << "(" << roots[i]->data << ", deg:" << i << ") ";
         }
         cout << endl;
     }
@@ -137,16 +122,14 @@ public:
 
 int main() {
     BinomialHeap h;
-
-    // testari
     h.insert(10);
     h.insert(20);
     h.insert(5);
 
     cout << "Minimul curent: " << h.getMin() << endl;
-    h.extractMin(); // de schimbat
-    
+    h.extractMin();
     h.printRoots();
 
     return 0;
 }
+

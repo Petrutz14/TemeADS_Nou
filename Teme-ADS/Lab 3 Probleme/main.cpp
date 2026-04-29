@@ -1,45 +1,54 @@
 #include <iostream>
 #include <string>
 #include <vector>
-#include <set>
-#include <unordered_map>
+#include <algorithm>
 
 using namespace std;
 
 // Problem 1: Dynamic Leaderboard
+struct Player {
+    string name;
+    int score;
+};
+
 class Leaderboard {
-    unordered_map<string, int> playerScores;
-    // set pt sortare automata, (score, name)
-    set<pair<int, string>> board;
+    vector<Player> players;
 
 public:
     void add(string name, int score) {
-        playerScores[name] = score;
-        board.insert({score, name});
+        players.push_back({name, score});
     }
 
     void update(string name, int delta) {
-        if (playerScores.find(name) != playerScores.end()) {
-            // scoatem din set ca sa il putem actualiza
-            board.erase({playerScores[name], name});
-            playerScores[name] += delta;
-            board.insert({playerScores[name], name});
+        for (int i = 0; i < players.size(); i++) {
+            if (players[i].name == name) {
+                players[i].score += delta;
+                return;
+            }
         }
     }
 
     void remove(string name) {
-        if (playerScores.find(name) != playerScores.end()) {
-            board.erase({playerScores[name], name});
-            playerScores.erase(name);
+        for (int i = 0; i < players.size(); i++) {
+            if (players[i].name == name) {
+                players.erase(players.begin() + i);
+                return;
+            }
         }
     }
 
+    // comparator pt sortare descrescatoare
+    static bool comparePlayers(Player a, Player b) {
+        if (a.score != b.score) return a.score > b.score;
+        return a.name < b.name;
+    }
+
     void top(int k) {
-        int count = 0;
-        // parcurgere inversa pt cele mai mari scoruri
-        for (auto it = board.rbegin(); it != board.rend() && count < k; ++it) {
-            cout << it->second << " " << it->first << endl;
-            count++;
+        vector<Player> sortedPlayers = players;
+        sort(sortedPlayers.begin(), sortedPlayers.end(), comparePlayers);
+
+        for (int i = 0; i < k && i < sortedPlayers.size(); i++) {
+            cout << sortedPlayers[i].name << " " << sortedPlayers[i].score << endl;
         }
         cout << endl;
     }
@@ -47,51 +56,34 @@ public:
 
 // Problem 2: Dynamic Median
 class MedianFinder {
-    // impartim numerele in doua jumatati pt eficienta
-    multiset<int> left;  // jumatatea mica (max element)
-    multiset<int> right; // jumatatea mare (min element)
-
-    // reechilibrare: left poate avea maxim 1 element in plus fata de right
-    void balance() {
-        if (left.size() > right.size() + 1) {
-            auto it = prev(left.end());
-            right.insert(*it);
-            left.erase(it);
-        } else if (right.size() > left.size()) {
-            auto it = right.begin();
-            left.insert(*it);
-            right.erase(it);
-        }
-    }
+    vector<int> numbers;
 
 public:
     void add(int x) {
-        if (left.empty() || x <= *left.rbegin()) {
-            left.insert(x);
-        } else {
-            right.insert(x);
-        }
-        balance();
+        numbers.push_back(x);
+        sort(numbers.begin(), numbers.end()); // sortam la fiecare adaugare
     }
 
     void remove(int x) {
-        auto it = left.find(x);
-        if (it != left.end()) {
-            left.erase(it);
-        } else {
-            it = right.find(x);
-            if (it != right.end()) {
-                right.erase(it);
+        for (int i = 0; i < numbers.size(); i++) {
+            if (numbers[i] == x) {
+                numbers.erase(numbers.begin() + i);
+                return; // scoatem doar o aparitie
             }
         }
-        balance();
     }
 
     void getMedian() {
-        if (left.empty()) return;
-        // daca nr total e par sau impar, returnam *left.rbegin() 
-        // conform cerintei "lower median"
-        cout << "Median: " << *left.rbegin() << endl;
+        if (numbers.empty()) return;
+        
+        int n = numbers.size();
+        // daca e par, n/2 - 1 e "lower median" pt indexare de la 0
+        // exemplu: [2, 5, 7, 10] (n=4) -> medianul e 5 (index 1)
+        if (n % 2 == 1) {
+            cout << "Median: " << numbers[n / 2] << endl;
+        } else {
+            cout << "Median: " << numbers[n / 2 - 1] << endl;
+        }
     }
 };
 
@@ -121,3 +113,4 @@ int main() {
 
     return 0;
 }
+
